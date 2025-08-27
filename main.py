@@ -124,28 +124,29 @@ def extract_email_content(message):
 def process_email_with_ollama(email_content):
     response = ollama.generate(
         model=OLLAMA_MODEL,
-        prompt=f"""
-        Analyze this resource fair email and extract:
-        1. Summary of main content (50 words max)
-        2. Contact information (names, emails, phones) - extract ALL contacts mentioned
-        3. Determine if this is requesting assistance or providing assistance
-        
-        Return ONLY in this JSON format:
+        system="You are a JSON extraction tool. You must respond ONLY with valid JSON, no other text or explanations.",
+        prompt=f"""Extract information from this email and return ONLY valid JSON:
+
+Required format:
+{{
+    "summary": "brief summary (50 words max)",
+    "contacts": [
         {{
-            "summary": "concise summary",
-            "contacts": [
-                {{
-                    "name": "full name or organization",
-                    "email": "email address",
-                    "phone": "phone number"
-                }}
-            ],
-            "assistance_type": "requesting" or "providing"
+            "name": "contact name or organization",
+            "email": "email address or empty string",
+            "phone": "phone number or empty string"
         }}
-        
-        Email Content:
-        {email_content[:10000]}  # Truncate to avoid context limits
-        """
+    ],
+    "assistance_type": "requesting"
+}}
+
+Rules:
+- assistance_type must be "requesting" or "providing"
+- Extract ALL contacts mentioned in the email
+- Return ONLY the JSON object, nothing else
+
+Email Content:
+{email_content[:10000]}"""
     )
     return response['response']
 
@@ -153,10 +154,36 @@ def parse_ollama_response(ollama_output):
     try:
         print(f"  Debug - Raw Ollama output: {ollama_output[:200]}...")  # Show first 200 chars
         
-        # Extract JSON from Ollama response
-        json_match = re.search(r'\{.*\}', ollama_output, re.DOTALL)
-        if json_match:
-            json_str = json_match.group(0)
+        # Clean the output first - remove any leading/trailing text
+        cleaned_output = ollama_output.strip()
+        
+        # Try multiple approaches to extract JSON
+        json_str = None
+        
+        # Method 1: Look for JSON after "JSON:" marker
+        json_marker_match = re.search(r'JSON:\s*(\{.*\})', cleaned_output, re.DOTALL | re.IGNORECASE)
+        if json_marker_match:
+            json_str = json_marker_match.group(1)
+        
+        # Method 2: Look for the first complete JSON object
+        if not json_str:
+            json_match = re.search(r'\{.*\}', cleaned_output, re.DOTALL)
+            if json_match:
+                json_str = json_match.group(0)
+        
+        # Method 3: If output starts with {, assume it's all JSON
+        if not json_str and cleaned_output.startswith('{'):
+            json_str = cleaned_output
+        
+        if json_str:
+            # Clean up common issues in JSON
+            json_str = json_str.strip()
+            # Remove any trailing text after the last }
+            last_brace = json_str.rfind('}')
+            if last_brace != -1:
+                json_str = json_str[:last_brace + 1]
+            
+            print(f"  Debug - Extracted JSON: {json_str[:100]}...")
             parsed = json.loads(json_str)
             
             # Validate and clean the parsed data
@@ -197,7 +224,8 @@ def parse_ollama_response(ollama_output):
             
     except json.JSONDecodeError as e:
         print(f"  Error - JSON parsing failed: {e}")
-        print(f"  Error - Ollama output was: {ollama_output}")
+        print(f"  Error - Attempted to parse: {json_str if 'json_str' in locals() else 'No JSON extracted'}")
+        print(f"  Error - Full Ollama output: {ollama_output}")
     except Exception as e:
         print(f"  Error - General parsing error: {e}")
     
