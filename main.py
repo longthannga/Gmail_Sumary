@@ -251,40 +251,6 @@ def setup_sheet_headers(service):
     except Exception as e:
         print(f"  Warning: Could not set up headers: {str(e)}")
         # Continue anyway - headers are not critical
-    """Set up headers in the Google Sheet if they don't exist"""
-    try:
-        # Check if headers already exist
-        result = service.spreadsheets().values().get(
-            spreadsheetId=SPREADSHEET_ID,
-            range=f"{SHEET_NAME}!A1:G1"
-        ).execute()
-        
-        existing_values = result.get('values', [])
-        
-        # Expected headers
-        headers = ['Name', 'Email', 'Phone', 'Summary', 'Assistance Type', 'Sent Date', 'Email Link']
-        
-        # If no headers or incomplete headers, set them up
-        if not existing_values or len(existing_values[0]) < 7:
-            print("Setting up sheet headers...")
-            header_body = {
-                'values': [headers]
-            }
-            
-            service.spreadsheets().values().update(
-                spreadsheetId=SPREADSHEET_ID,
-                range=f"{SHEET_NAME}!A1:G1",
-                valueInputOption='USER_ENTERED',
-                body=header_body
-            ).execute()
-            
-            print("  ✓ Headers set up successfully")
-        else:
-            print("  Headers already exist")
-            
-    except Exception as e:
-        print(f"  Warning: Could not set up headers: {str(e)}")
-        # Continue anyway - headers are not critical
 
 def test_sheet_access(service):
     """Test if we have write access to the Google Sheet"""
